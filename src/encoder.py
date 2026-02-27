@@ -70,6 +70,20 @@ def generate_face_encodings(face_data: Dict[Path, List[Dict[str, Any]]], verbose
 
     print(f"\nEncoding complete: {successful} successful, {failed} failed out of {total_faces} total")
 
-def validate_encodings(face_data: Dict[Path, List[Dict[str, Any]]]) -> Dict[str, int]:
-    """Validate encoding quality."""
-    pass
+def validate_encodings(face_data: Dict) -> Dict[str, int]:
+    """Check encoding quality."""
+    total = valid = invalid = 0
+
+    for photo, faces in face_data.items():
+        for face in faces:
+            total += 1
+            encoding = face.get('encoding')
+
+            if encoding is None or not isinstance(encoding, np.ndarray):
+                invalid += 1
+            elif encoding.shape != (128,):
+                invalid += 1
+            else:
+                valid += 1
+
+    return {'total': total, 'valid': valid, 'invalid': invalid}

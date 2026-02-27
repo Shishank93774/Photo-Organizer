@@ -1,7 +1,7 @@
 """Main entry point for photo organization tool."""
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from src.loader import load_photos
@@ -10,45 +10,25 @@ from src.encoder import generate_face_encodings, validate_encodings
 from src.cache import save_cache, load_cache
 
 
-def get_latest_photo_modification_time(directory_path: str) -> Optional[str]:
-    """
-    Get the most recent modification time of any photo in the directory tree.
+def get_directory_modified_time(directory_path): # captures any add or deletes in the phot_directory folder
+    """Get the directory's own last modified time"""
+    dir_path = Path(directory_path)
 
-    Args:
-        directory_path: Root directory to check
-
-    Returns:
-        Timestamp string of most recent photo, or None if no photos found
-    """
-    directory_path = Path(directory_path)
-    if not directory_path.exists() or not directory_path.is_dir():
+    if not dir_path.exists() or not dir_path.is_dir():
         return None
 
-    latest_time = 0
-
-    # Check all image files recursively
-    for ext in ['.jpg', '.jpeg', '.png']:
-        for photo_path in directory_path.rglob(f'*{ext}'):
-            try:
-                mod_time = photo_path.stat().st_mtime
-                latest_time = max(latest_time, mod_time)
-            except FileExistsError as fee:
-                print(f"File {photo_path} seems to not exist, Error- {fee}")
-                continue
-
-    if latest_time == 0:
-        return None
-
-    return datetime.fromtimestamp(latest_time).strftime("%Y_%m_%d_%H_%M_%S")
+    mod_time = dir_path.stat().st_mtime
+    return datetime.fromtimestamp(mod_time).strftime("%Y_%m_%d_%H_%M_%S")
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False) -> dict:
+def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True) -> dict:
     """"
     Main pipeline for face detection and encoding.
 
     Args:
         photos_directory: Path to folder containing photos
         force_cache_recompute: If True, ignore cache and regenerate
+        verbose: If true, provide verbose output
 
     Returns:
         Dictionary with face detections and encodings
@@ -61,7 +41,8 @@ def main(photos_directory: str, force_cache_recompute: bool = False) -> dict:
 
     if not force_cache_recompute:
         print("Checking for cached data...")
-        last_modified_dir_ts = get_latest_photo_modification_time(photos_directory)
+        last_modified_dir_ts = get_directory_modified_time(photos_directory)
+        print("last_modified_dir_ts", last_modified_dir_ts)
         cached_data = load_cache(cache_path, last_modified_dir_ts)
         if cached_data is not None:
             print("✓ Using cached data (skip detection and encoding)")
@@ -74,21 +55,21 @@ def main(photos_directory: str, force_cache_recompute: bool = False) -> dict:
 
     # Process from scratch
     print("[1/4] Loading photos...")
-    photos = load_photos(photos_path, verbose=True)
+    photos = load_photos(photos_path, verbose=verbose)
 
     print("\n[2/4] Detecting faces...")
-    face_data = detect_faces_batch(photos, verbose=True)
+    face_data = detect_faces_batch(photos, verbose=verbose)
     print_detection_summary(face_data)
 
     print("\n[3/4] Generating encodings...")
-    generate_face_encodings(face_data, verbose=True)
+    generate_face_encodings(face_data, verbose=verbose)
 
     print("\n[4/4] Validating and saving...")
-    # stats = validate_encodings(face_data)
-    # print(f"Encoding quality: {stats['valid']}/{stats['total']} valid")
+    stats = validate_encodings(face_data)
+    print(f"\nEncoding quality: {stats['valid']}/{stats['total']} valid")
 
     save_cache(cache_path=cache_path, face_data=face_data, now=now)
-    print("✓ Pipeline complete!")
+    print("\n\n✓ Pipeline complete!")
 
     return face_data
 
@@ -96,7 +77,8 @@ def main(photos_directory: str, force_cache_recompute: bool = False) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Photo organization tool")
     parser.add_argument("photos_directory", help="Directory containing photos")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--force-recompute", action="store_true")
 
     args = parser.parse_args()
-    result = main(args.photos_directory, args.force_recompute)
+    result = main(args.photos_directory, args.force_recompute, args.verbose)
