@@ -10,15 +10,19 @@ from src.encoder import generate_face_encodings, validate_encodings
 from src.cache import save_cache, load_cache
 
 
-def get_directory_modified_time(directory_path): # captures any add or deletes in the phot_directory folder
-    """Get the directory's own last modified time"""
-    dir_path = Path(directory_path)
+def get_directory_modified_time(directory_path: Path): # captures any add or deletes in the photo_directory folder
+    """Get the directory's and it's sub-directory's  last modified time"""
 
-    if not dir_path.exists() or not dir_path.is_dir():
+    if not directory_path.exists() or not directory_path.is_dir():
         return None
 
-    mod_time = dir_path.stat().st_mtime
-    return datetime.fromtimestamp(mod_time).strftime("%Y_%m_%d_%H_%M_%S")
+    max_mod_time = directory_path.stat().st_mtime
+
+    for dir in directory_path.iterdir():
+        if dir.is_dir():
+            max_mod_time = max(max_mod_time, get_directory_modified_time(dir))
+
+    return max_mod_time
 
 
 def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True) -> dict:
@@ -41,8 +45,7 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
 
     if not force_cache_recompute:
         print("Checking for cached data...")
-        last_modified_dir_ts = get_directory_modified_time(photos_directory)
-        print("last_modified_dir_ts", last_modified_dir_ts)
+        last_modified_dir_ts = datetime.fromtimestamp(get_directory_modified_time(photos_path)).strftime("%Y_%m_%d_%H_%M_%S")
         cached_data = load_cache(cache_path, last_modified_dir_ts)
         if cached_data is not None:
             print("✓ Using cached data (skip detection and encoding)")
