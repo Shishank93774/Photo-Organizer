@@ -1,4 +1,5 @@
 """Face detection utilities."""
+import uuid
 from pathlib import Path
 import face_recognition
 from typing import Dict, List, Optional, Tuple, Any
@@ -87,6 +88,7 @@ def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photo
         for j, loc in enumerate(face_locations):
              face_data_list.append({
                 "face_id": f"photo_{photo_name}_image_{j}",
+                "uuid": str(uuid.uuid4()),
                 "bbox": loc,
                 "encoding": None,
             })
