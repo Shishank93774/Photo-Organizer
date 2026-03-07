@@ -35,20 +35,24 @@ def detect_faces_in_image(image_path: Path) -> Optional[List[Tuple[int, int, int
         return None
 
 
-def show_face(path: Path, title: str = None, box: Optional[Tuple[float, float, float, float]] = None, scale: Tuple[int, int] = (300, 300), gray: bool = True):
+def show_face(path: Path, title: str = None, box: Optional[Tuple[float, float, float, float]] = None,
+              scale: Tuple[int, int] = (300, 300), gray: bool = True):
+    """Display a face image."""
     face = Image.open(str(path))
 
     if box:
         upper, right, lower, left = box
         face = face.crop((left, upper, right, lower))
 
-    face = face.resize(scale,resample=Resampling.LANCZOS)
+    face = face.resize(scale, resample=Resampling.LANCZOS)
 
     if gray:
         face = face.convert("L")
 
-    ImageShow.show(face, title=title)
+    if title:
+        print(f"\n>>> Showing: {title}")
 
+    ImageShow.show(face)
 
 def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photos: bool = False) -> Dict[Path, List[Dict[str, Any]]]:
     """
