@@ -8,6 +8,8 @@ from src.detector import detect_faces_batch, print_detection_summary
 from src.encoder import generate_face_encodings, validate_encodings
 from src.cache import save_cache, load_cache
 from src.clustering import extract_encodings_for_clustering, cluster_faces, save_cluster_summary
+from src.test_clustering import test_clustering_parameters
+from src.diagnosis import analyze_encoding_quality, analyze_detection_quality
 
 
 def get_directory_modified_time(directory_path: Path): # captures any add or deletes in the photo_directory folder
@@ -25,7 +27,7 @@ def get_directory_modified_time(directory_path: Path): # captures any add or del
     return max_mod_time
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True) -> dict:
+def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> dict:
     """"
     Loads faces from given photo directory and returns face_data with encodings
 
@@ -33,6 +35,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
         photos_directory: Path to folder containing photos
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
+        use_cnn: If True, use CNN detector
 
     Returns:
         face_data: Dictionary with face detections and encodings
@@ -61,7 +64,9 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     photos = load_photos(photos_path, verbose=verbose)
 
     print("\n[2/4] Detecting faces...")
-    face_data = detect_faces_batch(photos, verbose=verbose)
+    if use_cnn:
+        print("Using CNN detector")
+    face_data = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn)
     print_detection_summary(face_data)
 
     print("\n[3/4] Generating encodings...")
@@ -77,7 +82,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     return face_data
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True) -> None:
+def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> None:
     """
     The main pipeline for Photo Organizer tool
 
@@ -85,6 +90,7 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         photos_directory: Path to folder containing photos
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
+        use_cnn: If true, use CNN detector
     """
     # Phase 1-3: Load, detect, encode
     face_data = load_face_data(photos_directory, force_cache_recompute, verbose)
@@ -109,7 +115,7 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
 
     if response == 'y':
         from src.clustering import visualize_clusters
-        visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=15)
+        visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=10)
 
     print("\n✓ Clustering complete!")
 
@@ -119,10 +125,11 @@ if __name__ == "__main__":
     parser.add_argument("photos_directory", help="Directory containing photos")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--force-recompute", action="store_true")
+    parser.add_argument("--use-cnn", action="store_true", help="Use CNN detector (slower but more accurate)")
 
     args = parser.parse_args()
     try:
-        main(args.photos_directory, args.force_recompute, args.verbose)
+        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn)
     except KeyboardInterrupt as ke:
         print("\nProgram exited because of keyboard interrupt!")
     except Exception as e:

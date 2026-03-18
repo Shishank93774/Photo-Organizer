@@ -7,7 +7,9 @@ from typing import Dict, List, Optional, Tuple, Any
 # Pattern for encodings files: encodings_YYYY_MM_DD_HH_MM_SS.pkl
 ENCODING_PATTERN = r"^encodings_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.pkl$"
 
-def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int]) -> Optional[np.ndarray]:
+
+def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int],
+                           num_jitters: int = 10) -> Optional[np.ndarray]:
     """
     Generate 128-dimensional encoding for a single face.
 
@@ -20,7 +22,11 @@ def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int]) ->
     """
     try:
         image = face_recognition.load_image_file(str(photo_path))
-        encodings = face_recognition.face_encodings(image, known_face_locations=[bbox])
+        encodings = face_recognition.face_encodings(
+            image,
+            known_face_locations=[bbox],
+            num_jitters=num_jitters
+        )
 
         # face_encodings returns a list - take first element
         if len(encodings) > 0:
@@ -32,6 +38,7 @@ def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int]) ->
     except Exception as e:
         print(f"Error generating encoding: {e}")
         return None
+
 
 def generate_face_encodings(face_data: Dict[Path, List[Dict[str, Any]]], verbose: bool = True) -> None:
     """
@@ -50,7 +57,7 @@ def generate_face_encodings(face_data: Dict[Path, List[Dict[str, Any]]], verbose
 
     for i, (path, faces) in enumerate(face_data.items(), 1):
         if verbose:
-            print(f"Encoding faces in photo {i}/{len(face_data)}: {Path(path).name}")
+            print(f"\nEncoding faces in photo {i}/{len(face_data)}: {Path(path).name}")
 
         for face in faces:
             face_id = face['face_id']
@@ -68,7 +75,8 @@ def generate_face_encodings(face_data: Dict[Path, List[Dict[str, Any]]], verbose
                 if verbose:
                     print(f"  ⚠️ {face_id}: encoding failed")
 
-    print(f"\nEncoding complete: {successful} successful, {failed} failed out of {total_faces} total")
+    print(f"\nEncoding complete: {successful} successful, {failed} failed out of {total_faces} total\nn")
+
 
 def validate_encodings(face_data: Dict) -> Dict[str, int]:
     """Check encoding quality."""

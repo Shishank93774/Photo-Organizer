@@ -71,11 +71,11 @@ def load_cache(cache_path: Path, last_modified_dir_ts: str) -> Optional[Dict]:
     Returns:
         Cached face data, or None if cache doesn't exist
     """
-    # Your implementation:
-    # 1. Check if cache file exists
-    # 2. If exists, load with pickle.load()
-    # 3. If doesn't exist, return None
-    # 4. Handle corrupted cache files
+    # Implementation flow:
+        # 1. Check if cache file exists
+        # 2. If exists, load with pickle.load()
+        # 3. If doesn't exist, return None
+        # 4. Handle corrupted cache files
 
     cache_file = _get_latest_encodings(cache_path)
 

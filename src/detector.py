@@ -6,12 +6,14 @@ from typing import Dict, List, Optional, Tuple, Any
 from PIL import Image, ImageShow
 from PIL.Image import Resampling
 
-def detect_faces_in_image(image_path: Path) -> Optional[List[Tuple[int, int, int, int]]]:
+
+def detect_faces_in_image(image_path: Path, use_cnn: bool = False) -> Optional[List[Tuple[int, int, int, int]]]:
     """
     Detect faces in a single image.
 
     Args:
         image_path: Path to image file
+        use_cnn: Use CNN model for face detection (slower but more accurate)
 
     Returns:
         List of face bounding boxes as (top, right, bottom, left) tuples,
@@ -23,7 +25,10 @@ def detect_faces_in_image(image_path: Path) -> Optional[List[Tuple[int, int, int
     """
     try:
         image = face_recognition.load_image_file(str(image_path))
-        face_locations = face_recognition.face_locations(image)
+
+        model = 'cnn' if use_cnn else 'hog'
+        face_locations = face_recognition.face_locations(image, model=model)
+
         return face_locations
 
     except FileNotFoundError:
@@ -54,7 +59,8 @@ def show_face(path: Path, title: str = None, box: Optional[Tuple[float, float, f
 
     ImageShow.show(face)
 
-def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photos: bool = False) -> Dict[Path, List[Dict[str, Any]]]:
+
+def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photos: bool = False, use_cnn: bool = False) -> Dict[Path, List[Dict[str, Any]]]:
     """
     Detect faces in multiple photos.
 
@@ -62,6 +68,7 @@ def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photo
         photo_paths: List of image file paths
         verbose: Show progress messages
         show_photos: Show photos
+        use_cnn: Use CNN model for face detection (slower but more accurate)
 
     Returns:
         Dictionary mapping photo path -> list of face bounding boxes
@@ -73,7 +80,7 @@ def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photo
         if verbose:
             print(f"Processing {i}/{len(photo_paths)}: {photo_path.name}")
 
-        face_locations = detect_faces_in_image(photo_path)
+        face_locations = detect_faces_in_image(photo_path, use_cnn=use_cnn)
 
         # Skip if detection failed (None) or no faces found (empty list)
         if face_locations is None:
@@ -106,6 +113,7 @@ def detect_faces_batch(photo_paths: List[Path], verbose: bool = True, show_photo
                 show_face(photo_path, box=face, title=str(i))
 
     return face_data
+
 
 def print_detection_summary(face_data: Dict[Path, List]) -> None:
     """

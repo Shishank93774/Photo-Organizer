@@ -18,6 +18,7 @@ def extract_encodings_for_clustering(face_data: Dict[Path, List[Dict]]) -> Tuple
         Tuple of:
             - encodings_matrix: np.ndarray of shape (N, 128)
             - face_uuids: List of UUIDs corresponding to each row
+            - face_uuid_to_path_map: Dict of uuid and it's corresponding photo path
 
     Note:
         Skips faces with encoding=None
@@ -49,7 +50,7 @@ def extract_encodings_for_clustering(face_data: Dict[Path, List[Dict]]) -> Tuple
     return encodings_matrix, face_uuids, face_uuid_to_path_map
 
 
-def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.6, min_samples: int = 2) -> np.ndarray:
+def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: int = 2) -> np.ndarray:
     """
     Cluster face encodings using DBSCAN.
 

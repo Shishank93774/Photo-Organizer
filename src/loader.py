@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
+
 def load_photos(directory_path: Path, verbose: bool = False) -> List[Path]:
     """
     Recursively load all image file paths from directory.
@@ -51,7 +52,7 @@ def get_latest_photo_modification_time(directory_path: Path) -> Optional[str]:
     latest_time = 0
 
     # Check all image files recursively
-    for ext in ['.jpg', '.jpeg', '.png']:
+    for ext in ['.jpg', '.jpeg', '.png', '.HEIC']:
         for photo_path in directory_path.rglob(f'*{ext}'):
             try:
                 mod_time = photo_path.stat().st_mtime
