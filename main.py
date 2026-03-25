@@ -10,6 +10,7 @@ from src.cache import save_cache, load_cache
 from src.clustering import extract_encodings_for_clustering, cluster_faces, save_cluster_summary
 from src.test_clustering import test_clustering_parameters
 from src.diagnosis import analyze_encoding_quality, analyze_detection_quality
+from src.organizer import name_clusters_interactive, organize_photos
 
 
 def get_directory_modified_time(directory_path: Path): # captures any add or deletes in the photo_directory folder
@@ -109,7 +110,7 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
     # Save text summary
     save_cluster_summary(face_data, face_uuids, cluster_labels)
 
-    # Visualize clusters
+    # Ask if user wants to visualize clusters first (optional)
     print("\nWould you like to visualize the clusters? (y/n)")
     response = input().strip().lower()
 
@@ -117,7 +118,32 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         from src.clustering import visualize_clusters
         visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=10)
 
-    print("\n✓ Clustering complete!")
+    # Interactive naming and organization
+    print("\n" + "=" * 60)
+    print("PHOTO ORGANIZATION")
+    print("=" * 60)
+    print("\nWould you like to organize photos into named folders? (y/n)")
+    response = input().strip().lower()
+
+    if response == 'y':
+        # Ask user to name clusters
+        cluster_names = name_clusters_interactive(
+            face_data, face_uuids, cluster_labels, face_uuid_to_path_map
+        )
+
+        # Organize photos into folders
+        if cluster_names:
+            organize_photos(
+                face_data, cluster_labels, face_uuids,
+                face_uuid_to_path_map, cluster_names,
+                output_dir="output"
+            )
+        else:
+            print("\nNo clusters were named. Skipping organization.")
+    else:
+        print("\nSkipping photo organization.")
+
+    print("\n✓ Pipeline complete!")
 
 
 if __name__ == "__main__":
