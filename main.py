@@ -1,4 +1,7 @@
 """Main entry point for photo organization tool."""
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
+
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -28,7 +31,7 @@ def get_directory_modified_time(directory_path: Path): # captures any add or del
     return max_mod_time
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> dict:
+def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> dict:
     """"
     Loads faces from given photo directory and returns face_data with encodings
 
@@ -37,6 +40,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
         use_cnn: If True, use CNN detector
+        parallel: If True, use ProcessPoolExecutor for detection and encoding
 
     Returns:
         face_data: Dictionary with face detections and encodings
@@ -67,11 +71,11 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     print("\n[2/4] Detecting faces...")
     if use_cnn:
         print("Using CNN detector")
-    face_data = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn)
+    face_data = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel)
     print_detection_summary(face_data)
 
     print("\n[3/4] Generating encodings...")
-    generate_face_encodings(face_data, verbose=verbose)
+    generate_face_encodings(face_data, verbose=verbose, parallel=parallel)
 
     print("\n[4/4] Validating and saving...")
     stats = validate_encodings(face_data)
@@ -83,7 +87,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     return face_data
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> None:
+def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> None:
     """
     The main pipeline for Photo Organizer tool
 
@@ -92,9 +96,10 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
         use_cnn: If true, use CNN detector
+        parallel: If true, use ProcessPoolExecutor for detection and encoding
     """
     # Phase 1-3: Load, detect, encode
-    face_data = load_face_data(photos_directory, force_cache_recompute, verbose)
+    face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel)
 
     # Phase 4: Clustering
     print("\n" + "=" * 60)
@@ -147,15 +152,23 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
 
 
 if __name__ == "__main__":
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Photo organization tool")
     parser.add_argument("photos_directory", help="Directory containing photos")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--force-recompute", action="store_true")
     parser.add_argument("--use-cnn", action="store_true", help="Use CNN detector (slower but more accurate)")
+    parser.add_argument("--parallel", action="store_true", help="Use ProcessPoolExecutor for parallel detection and encoding")
 
     args = parser.parse_args()
     try:
-        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn)
+        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn, args.parallel)
     except KeyboardInterrupt as ke:
         print("\nProgram exited because of keyboard interrupt!")
     except Exception as e:
