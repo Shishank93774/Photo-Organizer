@@ -81,7 +81,7 @@ def name_clusters_interactive(
                 print(f"  [SKIPPED] Cluster {cluster_id} will go to 'unorganized'")
                 break
             # Sanitize name for folder creation
-            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip().capitalize()
             if safe_name:
                 cluster_names[cluster_id] = safe_name
                 print(f"  [NAMED] Cluster {cluster_id} -> '{safe_name}'")

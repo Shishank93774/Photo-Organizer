@@ -29,9 +29,11 @@ def load_photos(directory_path: Path, verbose: bool = False) -> List[Path]:
                 # Only add image files
                 photos.append(item)
     except PermissionError as e:
-        print(f"Permission denied: {directory}")
+        if verbose:
+            print(f"Permission denied: {directory}")
     except Exception as e:
-        print(f"Error scanning {directory}: {e}")
+        if verbose:
+            print(f"Error scanning {directory}: {e}")
 
     return photos
 
