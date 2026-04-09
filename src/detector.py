@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from PIL import Image, ImageShow
 from PIL.Image import Resampling
 from tqdm import tqdm
+from src.loader import load_image_as_array
 
 
 def detect_faces_in_image(image_path: Path, use_cnn: bool = False) -> Optional[List[Tuple[int, int, int, int]]]:
@@ -26,7 +27,7 @@ def detect_faces_in_image(image_path: Path, use_cnn: bool = False) -> Optional[L
         None means detection couldn't run (file error, corrupted image)
     """
     try:
-        image = face_recognition.load_image_file(str(image_path))
+        image = load_image_as_array(image_path)
 
         model = 'cnn' if use_cnn else 'hog'
         face_locations = face_recognition.face_locations(image, model=model)
@@ -120,7 +121,7 @@ def _detect_faces_sequential(
 
     with tqdm(total=len(photo_paths), desc="Detecting faces", ascii=True, leave=True) as pbar:
         for i, photo_path in enumerate(photo_paths, 1):
-            pbar.write(f"Processing {i}/{len(photo_paths)}: {photo_path.name}")
+            pbar.write(f"Processing {i}/{len(photo_paths)}: {photo_path.name} ({round(photo_path.stat().st_size/1048576, 1)} MB)")
 
             face_locations = detect_faces_in_image(photo_path, use_cnn=use_cnn)
 
@@ -184,7 +185,7 @@ def _detect_faces_parallel(
                     elif len(face_data_list) == 0:
                         pbar.write(f"  ℹ️ {photo_name}: No faces found")
                     else:
-                        face_data[str(photo_path)] = face_data_list
+                        face_data[str(photo_path.resolve())] = face_data_list
                         pbar.write(f"  ✓ {photo_name}: Found {len(face_data_list)} face(s)")
 
                     pbar.update(1)
@@ -198,7 +199,7 @@ def _detect_faces_parallel(
                     photo_path, face_data_list = future.result()
 
                     if face_data_list is not None and len(face_data_list) > 0:
-                        face_data[str(photo_path)] = face_data_list
+                        face_data[str(photo_path.resolve())] = face_data_list
 
                     pbar.update(1)
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
+from src.loader import load_image_as_array
 
 # Pattern for encodings files: encodings_YYYY_MM_DD_HH_MM_SS.pkl
 ENCODING_PATTERN = r"^encodings_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.pkl$"
@@ -23,7 +24,7 @@ def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int],
         128-d numpy array encoding, or None if encoding fails
     """
     try:
-        image = face_recognition.load_image_file(str(photo_path))
+        image = load_image_as_array(photo_path)
         encodings = face_recognition.face_encodings(
             image,
             known_face_locations=[bbox],

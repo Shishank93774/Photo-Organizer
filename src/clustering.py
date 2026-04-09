@@ -63,6 +63,11 @@ def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: i
         Array of cluster labels, one per face
         Label -1 indicates noise/outlier
     """
+    # Handle cases where no faces were detected
+    if encodings_matrix.size == 0:
+        print("\nNo faces found to cluster.")
+        return np.array([], dtype=int)
+
     print(f"\nClustering {encodings_matrix.shape[0]} faces...")
     print(f"Parameters: eps={eps}, min_samples={min_samples}")
 
@@ -76,7 +81,8 @@ def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: i
     print(f"\nClustering Results:")
     print(f"  Distinct people found: {n_clusters}")
     print(f"  Noise points (strangers): {n_noise}")
-    print(f"  Noise percentage: {n_noise / len(cluster_labels) * 100:.1f}%")
+    if len(cluster_labels) > 0:
+        print(f"  Noise percentage: {n_noise / len(cluster_labels) * 100:.1f}%")
 
     # Show cluster sizes
     if n_clusters > 0:
