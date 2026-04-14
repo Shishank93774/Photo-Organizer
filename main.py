@@ -4,17 +4,20 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import argparse
 import time
+import logging
 from pathlib import Path
 
 from src.loader import load_photos
 from src.detector import detect_faces_batch, print_detection_summary
 from src.encoder import generate_face_encodings, validate_encodings
 from src.cache import SQLiteCache
-
+from typing import Any
 from src.clustering import extract_encodings_for_clustering, cluster_faces, save_cluster_summary
 from src.test_clustering import test_clustering_parameters
 from src.diagnosis import analyze_encoding_quality, analyze_detection_quality
 from src.organizer import name_clusters_interactive, organize_photos
+
+from src.logger import setup_logging, worker_logging_config
 
 
 def get_directory_modified_time(directory_path: Path):
@@ -33,7 +36,7 @@ def get_directory_modified_time(directory_path: Path):
 
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False, downscale: bool = False) -> dict:
+def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False, downscale: bool = False, log_queue: Any = None) -> dict:
     """
     Loads faces from given photo directory and returns face_data with encodings
     Using SQLite incremental caching.
@@ -44,6 +47,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     db_path = cache_dir / "cache.db"
 
     cache = SQLiteCache(db_path)
+    logger = logging.getLogger()
 
     if not force_cache_recompute:
         print("Checking for cached data...")
@@ -85,10 +89,10 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
         print("\n[2/4] Detecting faces...")
         if use_cnn:
             print("Using CNN detector")
-        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel, downscale=downscale)
+        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel, downscale=downscale, log_queue=log_queue)
 
         print("\n[3/4] Generating encodings...")
-        generate_face_encodings(face_data_incremental, verbose=verbose, parallel=parallel)
+        generate_face_encodings(face_data_incremental, verbose=verbose, parallel=parallel, log_queue=log_queue)
 
         print("\n[4/4] Updating cache...")
         # Update cache for ALL processed photos, even those with no faces
@@ -125,72 +129,77 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         downscale: If true, downscales the image for faster processing.
         parallel: If true, use ProcessPoolExecutor for detection and encoding
     """
+    # Setup Logging
+    log_queue, listener = setup_logging(verbose)
 
-    print("\n" + "=" * 60)
-    print(" PROGRAM CONFIGURATION")
-    print("=" * 60)
-    print(f"  Photos Directory : {photos_directory}")
-    print(f"  Force Recompute  : {'YES' if force_cache_recompute else 'NO'}")
-    print(f"  Verbose Mode     : {'ON' if verbose else 'OFF'}")
-    print(f"  Use CNN Detector : {'YES' if use_cnn else 'NO'}")
-    print(f"  Downscale Photos : {'YES' if downscale else 'NO'}")
-    print(f"  Parallel Mode    : {'ON' if parallel else 'OFF'}")
-    print("=" * 60)
-    print("\nStarting pipeline in 4 seconds... (Press Ctrl+C to cancel)")
-    time.sleep(4)
-    print("\n")
+    try:
+        print("\n" + "=" * 60)
+        print(" PROGRAM CONFIGURATION")
+        print("=" * 60)
+        print(f"  Photos Directory : {photos_directory}")
+        print(f"  Force Recompute  : {'YES' if force_cache_recompute else 'NO'}")
+        print(f"  Verbose Mode     : {'ON' if verbose else 'OFF'}")
+        print(f"  Use CNN Detector : {'YES' if use_cnn else 'NO'}")
+        print(f"  Downscale Photos : {'YES' if downscale else 'NO'}")
+        print(f"  Parallel Mode    : {'ON' if parallel else 'OFF'}")
+        print("=" * 60)
+        print("\nStarting pipeline in 4 seconds... (Press Ctrl+C to cancel)")
+        time.sleep(4)
+        print("\n")
 
-    # Phase 1-3: Load, detect, encode
-    face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel, downscale)
+        # Pass log_queue to load_face_data so it can pass it to batch functions
+        face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel, downscale, log_queue=log_queue)
 
-    # Phase 4: Clustering
-    print("\n" + "=" * 60)
-    print("PHASE 4: CLUSTERING")
-    print("=" * 60)
+        # Phase 4: Clustering
+        print("\n" + "=" * 60)
+        print("PHASE 4: CLUSTERING")
+        print("=" * 60)
 
-    # Extract encodings
-    encodings_matrix, face_uuids, face_uuid_to_path_map = extract_encodings_for_clustering(face_data)
+        # Extract encodings
+        encodings_matrix, face_uuids, face_uuid_to_path_map = extract_encodings_for_clustering(face_data)
 
-    # Cluster
-    cluster_labels = cluster_faces(encodings_matrix, eps=0.35, min_samples=2)
+        # Cluster
+        cluster_labels = cluster_faces(encodings_matrix, eps=0.35, min_samples=2)
 
-    # Save text summary
-    save_cluster_summary(face_data, face_uuids, cluster_labels)
+        # Save text summary
+        save_cluster_summary(face_data, face_uuids, cluster_labels)
 
-    # Ask if user wants to visualize clusters first (optional)
-    print("\nWould you like to visualize the clusters? (y/n)")
-    response = input().strip().lower()
+        # Ask if user wants to visualize clusters first (optional)
+        print("\nWould you like to visualize the clusters? (y/n)")
+        response = input().strip().lower()
 
-    if response == 'y':
-        from src.clustering import visualize_clusters
-        visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=10)
+        if response == 'y':
+            from src.clustering import visualize_clusters
+            visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=10)
 
-    # Interactive naming and organization
-    print("\n" + "=" * 60)
-    print("PHOTO ORGANIZATION")
-    print("=" * 60)
-    print("\nWould you like to organize photos into named folders? (y/n)")
-    response = input().strip().lower()
+        # Interactive naming and organization
+        print("\n" + "=" * 60)
+        print("PHOTO ORGANIZATION")
+        print("=" * 60)
+        print("\nWould you like to organize photos into named folders? (y/n)")
+        response = input().strip().lower()
 
-    if response == 'y':
-        # Ask user to name clusters
-        cluster_names = name_clusters_interactive(
-            face_data, face_uuids, cluster_labels, face_uuid_to_path_map
-        )
-
-        # Organize photos into folders
-        if cluster_names:
-            organize_photos(
-                face_data, cluster_labels, face_uuids,
-                face_uuid_to_path_map, cluster_names,
-                output_dir="output"
+        if response == 'y':
+            # Ask user to name clusters
+            cluster_names = name_clusters_interactive(
+                face_data, face_uuids, cluster_labels, face_uuid_to_path_map
             )
-        else:
-            print("\nNo clusters were named. Skipping organization.")
-    else:
-        print("\nSkipping photo organization.")
 
-    print("\n✓ Pipeline complete!")
+            # Organize photos into folders
+            if cluster_names:
+                organize_photos(
+                    face_data, cluster_labels, face_uuids,
+                    face_uuid_to_path_map, cluster_names,
+                    output_dir="output"
+                )
+            else:
+                print("\nNo clusters were named. Skipping organization.")
+        else:
+            print("\nSkipping photo organization.")
+
+        print("\n✓ Pipeline complete!")
+    finally:
+        listener.stop()
 
 
 if __name__ == "__main__":

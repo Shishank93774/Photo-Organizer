@@ -1,11 +1,13 @@
 """Face encoding utilities."""
 import numpy as np
 import face_recognition
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 from src.loader import load_image_as_array
+from src.logger import worker_logging_config
 
 # Pattern for encodings files: encodings_YYYY_MM_DD_HH_MM_SS.pkl
 ENCODING_PATTERN = r"^encodings_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.pkl$"
@@ -53,7 +55,15 @@ def _encode_face_worker(args: Tuple[str, Tuple[int, int, int, int], str]) -> Tup
         Tuple of (photo_path, face_id, encoding or None)
     """
     photo_path, bbox, face_id = args
+    logger = logging.getLogger()
+
+    import os
+    logger.debug(f"Encoding face {face_id} in {Path(photo_path).name} (PID:{os.getpid()})")
     encoding = generate_face_encoding(Path(photo_path), bbox)
+
+    if encoding is None:
+        logger.warning(f"Encoding failed for face {face_id} in {Path(photo_path).name}")
+
     return (photo_path, face_id, encoding)
 
 
@@ -61,6 +71,7 @@ def generate_face_encodings(
     face_data: Dict[Path, List[Dict[str, Any]]],
     verbose: bool = True,
     parallel: bool = False,
+    log_queue: Any = None,
 ) -> None:
     """
     Generate face encodings for all detected faces. Modifies face_data in place.
@@ -74,7 +85,7 @@ def generate_face_encodings(
         None (modifies face_data in place)
     """
     if parallel:
-        _generate_face_encodings_parallel(face_data, verbose)
+        _generate_face_encodings_parallel(face_data, verbose, log_queue=log_queue)
     else:
         _generate_face_encodings_sequential(face_data, verbose)
 
@@ -87,10 +98,11 @@ def _generate_face_encodings_sequential(
     total_faces = sum(len(faces) for faces in face_data.values())
     successful = 0
     failed = 0
+    logger = logging.getLogger()
 
     with tqdm(total=total_faces, desc="Encoding faces", ascii=True, leave=True) as pbar:
         for i, (path, faces) in enumerate(face_data.items(), 1):
-            pbar.write(f"\nEncoding faces in photo {i}/{len(face_data)}: {Path(path).name}")
+            logger.debug(f"Encoding faces in photo {i}/{len(face_data)}: {Path(path).name}")
 
             for face in faces:
                 face_id = face['face_id']
@@ -101,19 +113,20 @@ def _generate_face_encodings_sequential(
                 if encoding is not None:
                     face['encoding'] = encoding
                     successful += 1
-                    pbar.write(f"  ✓ {face_id}: encoding generated")
+                    logger.info(f"  ✓ {face_id}: encoding generated")
                 else:
                     failed += 1
-                    pbar.write(f"  ⚠️ {face_id}: encoding failed")
+                    logger.warning(f"  ⚠️ {face_id}: encoding failed")
 
                 pbar.update(1)
 
-    print(f"\nEncoding complete: {successful} successful, {failed} failed out of {total_faces} total\n")
+    logger.info(f"Encoding complete: {successful} successful, {failed} failed out of {total_faces} total\n")
 
 
 def _generate_face_encodings_parallel(
     face_data: Dict[Path, List[Dict[str, Any]]],
     verbose: bool,
+    log_queue: Any = None,
 ) -> None:
     """Parallel face encoding using ProcessPoolExecutor."""
     import os
@@ -129,11 +142,23 @@ def _generate_face_encodings_parallel(
     failed = 0
     num_workers = min(os.cpu_count() or 4, 8)
 
+    # Parallel initialization
+    initializer = None
+    if log_queue is not None:
+        initializer = worker_logging_config
+        init_args = (log_queue,)
+    else:
+        init_args = ()
+
     # Process with progress bar
     desc = "Encoding faces"
     if verbose:
         with tqdm(total=len(work_items), desc=desc, ascii=True, leave=True) as pbar:
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            with ProcessPoolExecutor(
+                max_workers=num_workers,
+                initializer=initializer,
+                initargs=init_args
+            ) as executor:
                 # Submit all work
                 future_to_item = {
                     executor.submit(_encode_face_worker, item): item
@@ -147,18 +172,20 @@ def _generate_face_encodings_parallel(
 
                     if encoding is not None:
                         successful += 1
-                        pbar.write(f"  ✓ {face_id}: encoding generated")
                         _update_face_encoding(face_data, photo_path, face_id, encoding)
                     else:
                         failed += 1
-                        pbar.write(f"  ⚠️ {face_id}: encoding failed")
 
                     pbar.update(1)
     else:
         # Non-verbose: clean progress bar only, update face_data after
         results = []
         with tqdm(total=len(work_items), desc=desc, ascii=True, leave=False) as pbar:
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            with ProcessPoolExecutor(
+                max_workers=num_workers,
+                initializer=initializer,
+                initargs=init_args
+            ) as executor:
                 future_to_item = {
                     executor.submit(_encode_face_worker, item): item
                     for item in work_items
@@ -177,7 +204,7 @@ def _generate_face_encodings_parallel(
             else:
                 failed += 1
 
-    print(f"\nEncoding complete: {successful} successful, {failed} failed out of {total_faces} total\n")
+    logging.getLogger().info(f"Encoding complete: {successful} successful, {failed} failed out of {total_faces} total\n")
 
 
 def _update_face_encoding(

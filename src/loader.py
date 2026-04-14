@@ -5,6 +5,11 @@ from datetime import datetime
 import numpy as np
 from PIL import Image
 import pillow_heif
+import logging
+
+# Register HEIF opener to allow PIL to open .heic files
+pillow_heif.register_heif_opener()
+
 
 # Register HEIF opener to allow PIL to open .heic files
 pillow_heif.register_heif_opener()
@@ -35,6 +40,7 @@ def load_photos(directory_path: Path, verbose: bool = True, target_photos: Optio
     Returns:
         List of absolute paths to image files
     """
+    logger = logging.getLogger()
     if target_photos is not None:
         # Filter target_photos to ensure they are actually under directory_path and still exist
         valid_photos = []
@@ -46,7 +52,7 @@ def load_photos(directory_path: Path, verbose: bool = True, target_photos: Optio
     photos = []
     directory = str(directory_path)
     if verbose:
-        print(f"Scanning {directory}")
+        logger.info(f"Scanning {directory}")
 
     try:
         for item in directory_path.iterdir():
@@ -57,11 +63,9 @@ def load_photos(directory_path: Path, verbose: bool = True, target_photos: Optio
                 # Only add image files
                 photos.append(item)
     except PermissionError as e:
-        if verbose:
-            print(f"Permission denied: {directory}")
+        logger.warning(f"Permission denied: {directory}")
     except Exception as e:
-        if verbose:
-            print(f"Error scanning {directory}: {e}")
+        logger.error(f"Error scanning {directory}: {e}")
 
     return photos
 

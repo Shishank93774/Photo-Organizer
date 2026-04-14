@@ -1,8 +1,10 @@
 """Photo organization utilities for naming clusters and organizing photos."""
 import shutil
+import logging
 from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Set
+
 
 import numpy as np
 
@@ -123,6 +125,7 @@ def organize_photos(
         cluster_names: Dictionary mapping cluster_id to folder name
         output_dir: Base output directory
     """
+    logger = logging.getLogger()
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
 
@@ -176,8 +179,7 @@ def organize_photos(
                 shutil.copy2(src, dst)
                 total_copied += 1
 
-        print(f"\n{folder_name}/")
-        print(f"  {len(photo_paths)} photo(s) copied")
+        logger.info(f"{folder_name}/: {len(photo_paths)} photo(s) copied")
 
     # Create unorganized folder if needed
     if unorganized_photos:
@@ -191,14 +193,13 @@ def organize_photos(
                 shutil.copy2(src, dst)
                 total_copied += 1
 
-        print(f"\nunorganized/")
-        print(f"  {len(unorganized_photos)} photo(s) copied")
+        logger.info(f"unorganized/: {len(unorganized_photos)} photo(s) copied")
 
     # Save summary
     save_organization_summary(cluster_names, folder_photos, unorganized_photos, output_path)
 
-    print(f"\n✓ Total photos copied: {total_copied}")
-    print(f"✓ Output directory: {output_path.absolute()}")
+    logger.info(f"Total photos copied: {total_copied}")
+    logger.info(f"Output directory: {output_path.absolute()}")
 
 
 def save_organization_summary(
@@ -238,4 +239,4 @@ def save_organization_summary(
 
         f.write("=" * 60 + "\n")
 
-    print(f"\n✓ Summary saved to {summary_file}")
+    logging.getLogger().info(f"Summary saved to {summary_file}")

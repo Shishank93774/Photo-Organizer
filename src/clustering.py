@@ -3,7 +3,7 @@ from typing import Dict, Tuple, List
 from pathlib import Path
 from collections import defaultdict
 from sklearn.cluster import DBSCAN
-
+import logging
 
 from src.detector import show_face
 
@@ -27,6 +27,7 @@ def extract_encodings_for_clustering(face_data: Dict[Path, List[Dict]]) -> Tuple
     face_uuids = []
 
     face_uuid_to_path_map = {}
+    logger = logging.getLogger()
 
     for photo_path, face_list in face_data.items():
         for face in face_list:
@@ -44,8 +45,8 @@ def extract_encodings_for_clustering(face_data: Dict[Path, List[Dict]]) -> Tuple
     # Convert list of arrays to 2D matrix
     encodings_matrix = np.array(encodings_list)
 
-    print(f"Extracted {len(face_uuids)} valid encodings for clustering")
-    print(f"Matrix shape: {encodings_matrix.shape}")
+    logger.info(f"Extracted {len(face_uuids)} valid encodings for clustering")
+    logger.debug(f"Matrix shape: {encodings_matrix.shape}")
 
     return encodings_matrix, face_uuids, face_uuid_to_path_map
 
@@ -63,13 +64,14 @@ def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: i
         Array of cluster labels, one per face
         Label -1 indicates noise/outlier
     """
+    logger = logging.getLogger()
     # Handle cases where no faces were detected
     if encodings_matrix.size == 0:
         print("\nNo faces found to cluster.")
         return np.array([], dtype=int)
 
     print(f"\nClustering {encodings_matrix.shape[0]} faces...")
-    print(f"Parameters: eps={eps}, min_samples={min_samples}")
+    logger.debug(f"Parameters: eps={eps}, min_samples={min_samples}")
 
     clusterer = DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean')
     cluster_labels = clusterer.fit_predict(encodings_matrix)
@@ -78,7 +80,7 @@ def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: i
     n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
     n_noise = list(cluster_labels).count(-1)
 
-    print(f"\nClustering Results:")
+    print("\nClustering Results:")
     print(f"  Distinct people found: {n_clusters}")
     print(f"  Noise points (strangers): {n_noise}")
     if len(cluster_labels) > 0:
@@ -86,7 +88,7 @@ def cluster_faces(encodings_matrix: np.ndarray, eps: float = 0.4, min_samples: i
 
     # Show cluster sizes
     if n_clusters > 0:
-        print(f"\nCluster sizes:")
+        print("\nCluster sizes:")
         for cluster_id in range(n_clusters):
             count = list(cluster_labels).count(cluster_id)
             print(f"  Cluster {cluster_id}: {count} faces")
@@ -222,4 +224,4 @@ def save_cluster_summary(face_data: Dict[Path, List[Dict]],
             for face_info in faces:
                 f.write(f"  {face_info['photo']}: {face_info['uuid']}\n")
 
-    print(f"\n✓ Cluster summary saved to {output_file}")
+    logging.getLogger().info(f"Cluster summary saved to {output_file}")
