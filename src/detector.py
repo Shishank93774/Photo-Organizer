@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import face_recognition
+import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 from PIL import Image, ImageShow
 from PIL.Image import Resampling
@@ -10,13 +11,14 @@ from tqdm import tqdm
 from src.loader import load_image_as_array
 
 
-def detect_faces_in_image(image_path: Path, use_cnn: bool = False) -> Optional[List[Tuple[int, int, int, int]]]:
+def detect_faces_in_image(image_path: Path, use_cnn: bool = False, downscale: bool = False) -> Optional[List[Tuple[int, int, int, int]]]:
     """
     Detect faces in a single image.
 
     Args:
         image_path: Path to image file
         use_cnn: Use CNN model for face detection (slower but more accurate)
+        downscale: If True, downscale the image for faster detection (especially for CNN)
 
     Returns:
         List of face bounding boxes as (top, right, bottom, left) tuples,
@@ -29,8 +31,27 @@ def detect_faces_in_image(image_path: Path, use_cnn: bool = False) -> Optional[L
     try:
         image = load_image_as_array(image_path)
 
+        scale_factor = 1.0
+        if downscale:
+            # Downscale to a maximum width of 1000px for faster detection
+            h, w = image.shape[:2]
+            if w > 1000:
+                scale_factor = 1000 / w
+                from PIL import Image
+                pil_img = Image.fromarray(image)
+                new_h = int(h * scale_factor)
+                pil_img = pil_img.resize((1000, new_h), resample=Image.Resampling.LANCZOS)
+                image = np.array(pil_img)
+
         model = 'cnn' if use_cnn else 'hog'
         face_locations = face_recognition.face_locations(image, model=model)
+
+        # Scale bounding boxes back up if we downscaled
+        if scale_factor != 1.0:
+            face_locations = [
+                (int(top / scale_factor), int(right / scale_factor), int(bottom / scale_factor), int(left / scale_factor))
+                for (top, right, bottom, left) in face_locations
+            ]
 
         return face_locations
 
@@ -79,6 +100,7 @@ def detect_faces_batch(
     show_photos: bool = False,
     use_cnn: bool = False,
     parallel: bool = False,
+    downscale: bool = False,
 ) -> Dict[Path, List[Dict[str, Any]]]:
     """
     Detect faces in multiple photos.
@@ -89,10 +111,7 @@ def detect_faces_batch(
         show_photos: Show photos
         use_cnn: Use CNN model for face detection (slower but more accurate)
         parallel: If True, use multiprocessing for parallel detection
-
-    Returns:
-        Dictionary mapping photo path -> list of face data dicts
-        Only includes photos where at least one face was detected
+        downscale: If True, downscale images for faster detection
     """
     face_data = {}
 
@@ -101,7 +120,7 @@ def detect_faces_batch(
         face_data = _detect_faces_parallel(photo_paths, use_cnn, verbose)
     else:
         # Sequential mode
-        face_data = _detect_faces_sequential(photo_paths, use_cnn, verbose)
+        face_data = _detect_faces_sequential(photo_paths, use_cnn, verbose, downscale=downscale)
 
     if show_photos:
         for photo_path, faces in face_data.items():
@@ -115,6 +134,7 @@ def _detect_faces_sequential(
     photo_paths: List[Path],
     use_cnn: bool,
     verbose: bool,
+    downscale: bool = False,
 ) -> Dict[Path, List[Dict[str, Any]]]:
     """Sequential face detection with tqdm progress bar."""
     face_data = {}
@@ -123,7 +143,7 @@ def _detect_faces_sequential(
         for i, photo_path in enumerate(photo_paths, 1):
             pbar.write(f"Processing {i}/{len(photo_paths)}: {photo_path.name} ({round(photo_path.stat().st_size/1048576, 1)} MB)")
 
-            face_locations = detect_faces_in_image(photo_path, use_cnn=use_cnn)
+            face_locations = detect_faces_in_image(photo_path, use_cnn=use_cnn, downscale=downscale)
 
             # Skip if detection failed (None) or no faces found (empty list)
             if face_locations is None:
@@ -146,7 +166,7 @@ def _detect_faces_sequential(
                     "bbox": loc,
                     "encoding": None,
                 })
-            face_data[str(photo_path)] = face_data_list
+            face_data[str(photo_path.resolve())] = face_data_list
 
             pbar.write(f"  ✓ Found {len(face_locations)} face(s)")
             pbar.update(1)
@@ -163,7 +183,7 @@ def _detect_faces_parallel(
     import os
 
     face_data = {}
-    num_workers = min(os.cpu_count() or 4, 8)
+    num_workers = min(os.cpu_count() or 4, 6)
 
     # Prepare work items
     work_items = [(photo_path, use_cnn) for photo_path in photo_paths]
