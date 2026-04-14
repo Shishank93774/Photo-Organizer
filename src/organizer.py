@@ -74,7 +74,7 @@ def name_clusters_interactive(
                     photo_name = Path(photo_path).stem
                     title = f"Cluster {cluster_id} | Face {i}/{len(sample_uuids)} | Photo: {photo_name}"
                     print(f"  [{i}] {photo_name}")
-                    show_face(photo_path, title=title, box=bbox, gray=False)
+                    show_face(Path(photo_path), title=title, box=bbox, gray=False)
 
         # Prompt for name
         while True:

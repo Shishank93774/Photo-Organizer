@@ -6,21 +6,23 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
+
 from src.loader import load_image_as_array
 from src.logger import worker_logging_config
 
-# Pattern for encodings files: encodings_YYYY_MM_DD_HH_MM_SS.pkl
-ENCODING_PATTERN = r"^encodings_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.pkl$"
 
-
-def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int],
-                           num_jitters: int = 10) -> Optional[np.ndarray]:
+def generate_face_encoding(
+        photo_path: Path,
+        bbox: Tuple[int, int, int, int],
+        num_jitters: int = 10
+) -> Optional[np.ndarray]:
     """
     Generate 128-dimensional encoding for a single face.
 
     Args:
         photo_path: Path to image file
         bbox: Face bounding box as (top, right, bottom, left)
+        num_jitters: Number of times to re-sample the face
 
     Returns:
         128-d numpy array encoding, or None if encoding fails
@@ -40,7 +42,7 @@ def generate_face_encoding(photo_path: Path, bbox: Tuple[int, int, int, int],
             # Sometimes encoding fails (blurry face, weird angle)
             return None
 
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -64,7 +66,7 @@ def _encode_face_worker(args: Tuple[str, Tuple[int, int, int, int], str]) -> Tup
     if encoding is None:
         logger.warning(f"Encoding failed for face {face_id} in {Path(photo_path).name}")
 
-    return (photo_path, face_id, encoding)
+    return photo_path, face_id, encoding
 
 
 def generate_face_encodings(
@@ -80,6 +82,7 @@ def generate_face_encodings(
         face_data: Dictionary (photo paths -> face bboxes)
         verbose: Show progress messages
         parallel: If True, use multiprocessing for parallel encoding
+        log_queue: Queue for logging messages
 
     Returns:
         None (modifies face_data in place)
@@ -167,7 +170,6 @@ def _generate_face_encodings_parallel(
 
                 # Process results as they complete
                 for future in as_completed(future_to_item):
-                    item = future_to_item[future]
                     photo_path, face_id, encoding = future.result()
 
                     if encoding is not None:

@@ -3,7 +3,7 @@ import sqlite3
 import json
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Optional
 
 class SQLiteCache:
     def __init__(self, db_path: Path):
@@ -66,15 +66,11 @@ class SQLiteCache:
 
     def get_incremental_updates(self, photos_path: Path) -> Dict[str, List[Path]]:
         """
-        Implements Pass 1 (global mtime) and Pass 2 (set difference).
+        Implements Incremental Scan to detect new, modified, and deleted photos.
         Returns a dict: {'new': [], 'modified': [], 'deleted': [], 'none': []}
         """
-        # Pass 1: Global Fast-Path Check
-        # We need a way to get the current max_mtime of the directory.
-        # Since the logic is in main.py, we expect the caller to provide it
-        # or we can implement a helper. For now, we'll assume Pass 2 is the primary.
 
-        # Pass 2: Incremental Scan
+        # Incremental Scan
         # 1. Fetch all cached paths, mtimes, and sizes
         cursor = self.conn.execute("SELECT path, mtime, size FROM photos")
         cached_data = {row['path']: (row['mtime'], row['size']) for row in cursor.fetchall()}

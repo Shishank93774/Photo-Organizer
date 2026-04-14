@@ -28,7 +28,11 @@ def load_image_as_array(path: Path) -> np.ndarray:
     img = img.convert("RGB")
     return np.array(img)
 
-def load_photos(directory_path: Path, verbose: bool = True, target_photos: Optional[List[Path]] = None) -> List[Path]:
+def load_photos(
+        directory_path: Path,
+        verbose: bool = True,
+        target_photos: Optional[List[Path]] = None
+) -> List[Path]:
     """
     Recursively load image file paths from directory.
 
@@ -62,7 +66,7 @@ def load_photos(directory_path: Path, verbose: bool = True, target_photos: Optio
             elif item.suffix.lower() in {'.jpg', '.jpeg', '.png', '.heic'}:
                 # Only add image files
                 photos.append(item)
-    except PermissionError as e:
+    except PermissionError:
         logger.warning(f"Permission denied: {directory}")
     except Exception as e:
         logger.error(f"Error scanning {directory}: {e}")
@@ -91,7 +95,7 @@ def get_latest_photo_modification_time(directory_path: Path) -> Optional[str]:
             try:
                 mod_time = photo_path.stat().st_mtime
                 latest_time = max(latest_time, mod_time)
-            except Exception as e:
+            except Exception:
                 continue
 
     if latest_time == 0:

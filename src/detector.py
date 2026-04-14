@@ -1,19 +1,24 @@
 """Face detection utilities."""
 import uuid
 import logging
-from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import face_recognition
 import numpy as np
+from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple, Any
 from PIL import Image, ImageShow
 from PIL.Image import Resampling
 from tqdm import tqdm
+
 from src.loader import load_image_as_array
 from src.logger import worker_logging_config
 
 
-def detect_faces_in_image(image_path: Path, use_cnn: bool = False, downscale: bool = False) -> Optional[List[Tuple[int, int, int, int]]]:
+def detect_faces_in_image(
+        image_path: Path,
+        use_cnn: bool = False,
+        downscale: bool = False
+) -> Optional[List[Tuple[int, int, int, int]]]:
     """
     Detect faces in a single image.
 
@@ -60,7 +65,7 @@ def detect_faces_in_image(image_path: Path, use_cnn: bool = False, downscale: bo
     except FileNotFoundError:
         return None
 
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -85,11 +90,11 @@ def _detect_faces_worker(args: Tuple[Path, bool]) -> Tuple[Path, Optional[List[D
     # Skip if detection failed (None) or no faces found (empty list)
     if face_locations is None:
         logger.warning(f"Detection failed for {photo_path.name}")
-        return (photo_path, None)
+        return photo_path, None
 
     if len(face_locations) == 0:
         logger.debug(f"No faces found in {photo_path.name}")
-        return (photo_path, [])
+        return photo_path, []
 
     face_data_list = []
     photo_name = photo_path.stem
@@ -103,7 +108,7 @@ def _detect_faces_worker(args: Tuple[Path, bool]) -> Tuple[Path, Optional[List[D
         })
 
     logger.debug(f"Found {len(face_locations)} face(s) in {photo_path.name}")
-    return (photo_path, face_data_list)
+    return photo_path, face_data_list
 
 
 def detect_faces_batch(
@@ -125,8 +130,8 @@ def detect_faces_batch(
         use_cnn: Use CNN model for face detection (slower but more accurate)
         parallel: If True, use multiprocessing for parallel detection
         downscale: If True, downscale images for faster detection
+        log_queue: Queue for logging messages
     """
-    face_data = {}
 
     if parallel:
         # Parallel mode: use ProcessPoolExecutor
@@ -225,7 +230,6 @@ def _detect_faces_parallel(
 
                 for future in as_completed(futures):
                     photo_path, face_data_list = future.result()
-                    photo_name = photo_path.name
 
                     if face_data_list is None:
                         # Log is already handled in worker, but we can update pbar
@@ -257,8 +261,12 @@ def _detect_faces_parallel(
     return face_data
 
 
-def show_face(path: Path, title: str = None, box: Optional[Tuple[float, float, float, float]] = None,
-              scale: Tuple[int, int] = (300, 300), gray: bool = True):
+def show_face(
+        path: Path,
+        title: str = None,
+        box: Optional[Tuple[float, float, float, float]] = None,
+        scale: Tuple[int, int] = (300, 300), gray: bool = True
+):
     """Display a face image."""
     face = Image.open(str(path))
 

@@ -6,18 +6,15 @@ import argparse
 import time
 import logging
 from pathlib import Path
+from typing import Any
 
 from src.loader import load_photos
 from src.detector import detect_faces_batch, print_detection_summary
-from src.encoder import generate_face_encodings, validate_encodings
+from src.encoder import generate_face_encodings
 from src.cache import SQLiteCache
-from typing import Any
 from src.clustering import extract_encodings_for_clustering, cluster_faces, save_cluster_summary
-from src.test_clustering import test_clustering_parameters
-from src.diagnosis import analyze_encoding_quality, analyze_detection_quality
 from src.organizer import name_clusters_interactive, organize_photos
-
-from src.logger import setup_logging, worker_logging_config
+from src.logger import setup_logging
 
 
 def get_directory_modified_time(directory_path: Path):
@@ -36,7 +33,15 @@ def get_directory_modified_time(directory_path: Path):
 
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False, downscale: bool = False, log_queue: Any = None) -> dict:
+def load_face_data(
+        photos_directory: str,
+        force_cache_recompute: bool = False,
+        verbose: bool = True,
+        use_cnn: bool = False,
+        parallel: bool = False,
+        downscale: bool = False,
+        log_queue: Any = None
+) -> dict:
     """
     Loads faces from given photo directory and returns face_data with encodings
     Using SQLite incremental caching.
@@ -47,7 +52,6 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
     db_path = cache_dir / "cache.db"
 
     cache = SQLiteCache(db_path)
-    logger = logging.getLogger()
 
     if not force_cache_recompute:
         print("Checking for cached data...")
@@ -117,7 +121,14 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
 
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, downscale: bool = False, parallel: bool = False) -> None:
+def main(
+        photos_directory: str,
+        force_cache_recompute: bool = False,
+        verbose: bool = True,
+        use_cnn: bool = False,
+        downscale: bool = False,
+        parallel: bool = False
+) -> None:
     """
     The main pipeline for Photo Organizer tool
 
@@ -170,7 +181,7 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
 
         if response == 'y':
             from src.clustering import visualize_clusters
-            visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=10)
+            visualize_clusters(face_data, face_uuids, face_uuid_to_path_map, cluster_labels, max_faces_per_cluster=5)
 
         # Interactive naming and organization
         print("\n" + "=" * 60)

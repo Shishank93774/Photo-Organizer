@@ -1,9 +1,9 @@
 import numpy as np
+import logging
 from typing import Dict, Tuple, List
 from pathlib import Path
 from collections import defaultdict
 from sklearn.cluster import DBSCAN
-import logging
 
 from src.detector import show_face
 
@@ -165,10 +165,12 @@ def visualize_clusters(face_data: Dict[Path, List[Dict]],
             input("\nPress Enter to see next cluster...")
 
 
-def save_cluster_summary(face_data: Dict[Path, List[Dict]],
-                         face_uuids: List[str],
-                         cluster_labels: np.ndarray,
-                         output_file: str = "cluster_summary.txt"):
+def save_cluster_summary(
+        face_data: Dict[Path, List[Dict]],
+        face_uuids: List[str],
+        cluster_labels: np.ndarray,
+        output_file: str = "cluster_summary.txt"
+):
     """
     Save a text summary of clustering results.
 

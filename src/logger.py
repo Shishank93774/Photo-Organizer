@@ -1,8 +1,7 @@
 import logging
 import multiprocessing
 from logging.handlers import QueueHandler, QueueListener
-from tqdm import tqdm
-import sys
+
 
 class TqdmLoggingHandler(logging.Handler):
     """
