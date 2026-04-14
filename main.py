@@ -1,4 +1,7 @@
 """Main entry point for photo organization tool."""
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
+
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -6,15 +9,16 @@ from datetime import datetime
 from src.loader import load_photos
 from src.detector import detect_faces_batch, print_detection_summary
 from src.encoder import generate_face_encodings, validate_encodings
-from src.cache import save_cache, load_cache
+from src.cache import SQLiteCache
+
 from src.clustering import extract_encodings_for_clustering, cluster_faces, save_cluster_summary
 from src.test_clustering import test_clustering_parameters
 from src.diagnosis import analyze_encoding_quality, analyze_detection_quality
 from src.organizer import name_clusters_interactive, organize_photos
 
 
-def get_directory_modified_time(directory_path: Path): # captures any add or deletes in the photo_directory folder
-    """Get the directory's and it's sub-directory's  last modified time"""
+def get_directory_modified_time(directory_path: Path):
+    """Get the directory's and it's sub-directory's last modified time"""
 
     if not directory_path.exists() or not directory_path.is_dir():
         return None
@@ -28,62 +32,85 @@ def get_directory_modified_time(directory_path: Path): # captures any add or del
     return max_mod_time
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> dict:
-    """"
-    Loads faces from given photo directory and returns face_data with encodings
 
-    Args:
-        photos_directory: Path to folder containing photos
-        force_cache_recompute: If True, ignore cache and regenerate
-        verbose: If true, provide verbose output
-        use_cnn: If True, use CNN detector
-
-    Returns:
-        face_data: Dictionary with face detections and encodings
+def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> dict:
     """
-
-    now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S") # current date and time
-
+    Loads faces from given photo directory and returns face_data with encodings
+    Using SQLite incremental caching.
+    """
     photos_path = Path(photos_directory)
-    cache_path = photos_path.parent / "cache"
+    cache_dir = photos_path.parent / "cache"
+    cache_dir.mkdir(exist_ok=True)
+    db_path = cache_dir / "cache.db"
+
+    cache = SQLiteCache(db_path)
 
     if not force_cache_recompute:
         print("Checking for cached data...")
-        last_modified_dir_ts = datetime.fromtimestamp(get_directory_modified_time(photos_path)).strftime("%Y_%m_%d_%H_%M_%S")
-        cached_data = load_cache(cache_path, last_modified_dir_ts)
-        if cached_data is not None:
-            print("✓ Using cached data (skip detection and encoding)")
-            print_detection_summary(cached_data)
-            return cached_data
-        else:
-            print("No cache found. Processing from scratch...")
+
+        # Pass 1: Global Fast-Path Check
+        current_max_mtime = get_directory_modified_time(photos_path)
+        cached_max_mtime = cache.get_global_mtime()
+
+        if cached_max_mtime is not None and current_max_mtime <= cached_max_mtime:
+            print("✓ Global cache valid (no changes detected)")
+            return cache.reconstruct_face_data()
+
+        # Pass 2: Incremental Scan
+        updates = cache.get_incremental_updates(photos_path)
+        photos_to_process = updates['new'] + updates['modified']
+
+        if not photos_to_process:
+            print("No individual files changed. Using cached data.")
+            # Update global mtime since we just verified everything is up-to-date
+            cache.set_global_mtime(current_max_mtime)
+            return cache.reconstruct_face_data()
+
+        print(f"Incremental update: {len(updates['new'])} new, {len(updates['modified'])} modified photos.")
+
+        # Handle deleted files
+        for deleted_path in updates['deleted']:
+            cache.remove_photo_data(deleted_path)
     else:
         print("Force recompute enabled. Processing from scratch...")
+        # In force recompute, we treat everything as new
+        photos_to_process = load_photos(photos_path, verbose=verbose)
 
-    # Process from scratch
-    print("[1/4] Loading photos...")
-    photos = load_photos(photos_path, verbose=verbose)
+    # Process only necessary photos
+    if photos_to_process:
+        print(f"[1/4] Loading {len(photos_to_process)} photos...")
+        # Use the target_photos argument we added to load_photos
+        photos = load_photos(photos_path, verbose=verbose, target_photos=photos_to_process)
 
-    print("\n[2/4] Detecting faces...")
-    if use_cnn:
-        print("Using CNN detector")
-    face_data = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn)
-    print_detection_summary(face_data)
+        print("\n[2/4] Detecting faces...")
+        if use_cnn:
+            print("Using CNN detector")
+        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel)
 
-    print("\n[3/4] Generating encodings...")
-    generate_face_encodings(face_data, verbose=verbose)
+        print("\n[3/4] Generating encodings...")
+        generate_face_encodings(face_data_incremental, verbose=verbose, parallel=parallel)
 
-    print("\n[4/4] Validating and saving...")
-    stats = validate_encodings(face_data)
-    print(f"\nEncoding quality: {stats['valid']}/{stats['total']} valid")
+        print("\n[4/4] Updating cache...")
+        for path_str, faces in face_data_incremental.items():
+            p = Path(path_str)
+            cache.update_photo_data(p, p.stat().st_mtime, faces)
 
-    save_cache(cache_path=cache_path, face_data=face_data, now=now)
-    print("\n\n✓ Pipeline complete!")
+        # Update global marker after successful processing
+        current_max_mtime = get_directory_modified_time(photos_path)
 
-    return face_data
+        if current_max_mtime:
+            cache.set_global_mtime(current_max_mtime)
+
+    # Final step: reconstruct full face_data from DB
+    full_face_data = cache.reconstruct_face_data()
+    print_detection_summary(full_face_data)
+    print("\n✓ Pipeline complete!")
+
+    return full_face_data
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False) -> None:
+
+def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> None:
     """
     The main pipeline for Photo Organizer tool
 
@@ -92,9 +119,10 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
         use_cnn: If true, use CNN detector
+        parallel: If true, use ProcessPoolExecutor for detection and encoding
     """
     # Phase 1-3: Load, detect, encode
-    face_data = load_face_data(photos_directory, force_cache_recompute, verbose)
+    face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel)
 
     # Phase 4: Clustering
     print("\n" + "=" * 60)
@@ -147,15 +175,23 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
 
 
 if __name__ == "__main__":
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Photo organization tool")
     parser.add_argument("photos_directory", help="Directory containing photos")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--force-recompute", action="store_true")
     parser.add_argument("--use-cnn", action="store_true", help="Use CNN detector (slower but more accurate)")
+    parser.add_argument("--parallel", action="store_true", help="Use ProcessPoolExecutor for parallel detection and encoding")
 
     args = parser.parse_args()
     try:
-        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn)
+        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn, args.parallel)
     except KeyboardInterrupt as ke:
         print("\nProgram exited because of keyboard interrupt!")
     except Exception as e:
