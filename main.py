@@ -3,8 +3,8 @@ import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import argparse
+import time
 from pathlib import Path
-from datetime import datetime
 
 from src.loader import load_photos
 from src.detector import detect_faces_batch, print_detection_summary
@@ -33,7 +33,7 @@ def get_directory_modified_time(directory_path: Path):
 
 
 
-def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> dict:
+def load_face_data(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False, downscale: bool = False) -> dict:
     """
     Loads faces from given photo directory and returns face_data with encodings
     Using SQLite incremental caching.
@@ -85,14 +85,17 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
         print("\n[2/4] Detecting faces...")
         if use_cnn:
             print("Using CNN detector")
-        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel)
+        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel, downscale=downscale)
 
         print("\n[3/4] Generating encodings...")
         generate_face_encodings(face_data_incremental, verbose=verbose, parallel=parallel)
 
         print("\n[4/4] Updating cache...")
-        for path_str, faces in face_data_incremental.items():
+        # Update cache for ALL processed photos, even those with no faces
+        for path_str in photos_to_process:
             p = Path(path_str)
+            # Get faces for this photo if found, otherwise empty list
+            faces = face_data_incremental.get(str(p.resolve()), [])
             cache.update_photo_data(p, p.stat().st_mtime, faces)
 
         # Update global marker after successful processing
@@ -110,7 +113,7 @@ def load_face_data(photos_directory: str, force_cache_recompute: bool = False, v
 
 
 
-def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, parallel: bool = False) -> None:
+def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bool = True, use_cnn: bool = False, downscale: bool = False, parallel: bool = False) -> None:
     """
     The main pipeline for Photo Organizer tool
 
@@ -119,10 +122,26 @@ def main(photos_directory: str, force_cache_recompute: bool = False, verbose: bo
         force_cache_recompute: If True, ignore cache and regenerate
         verbose: If true, provide verbose output
         use_cnn: If true, use CNN detector
+        downscale: If true, downscales the image for faster processing.
         parallel: If true, use ProcessPoolExecutor for detection and encoding
     """
+
+    print("\n" + "=" * 60)
+    print(" PROGRAM CONFIGURATION")
+    print("=" * 60)
+    print(f"  Photos Directory : {photos_directory}")
+    print(f"  Force Recompute  : {'YES' if force_cache_recompute else 'NO'}")
+    print(f"  Verbose Mode     : {'ON' if verbose else 'OFF'}")
+    print(f"  Use CNN Detector : {'YES' if use_cnn else 'NO'}")
+    print(f"  Downscale Photos : {'YES' if downscale else 'NO'}")
+    print(f"  Parallel Mode    : {'ON' if parallel else 'OFF'}")
+    print("=" * 60)
+    print("\nStarting pipeline in 4 seconds... (Press Ctrl+C to cancel)")
+    time.sleep(4)
+    print("\n")
+
     # Phase 1-3: Load, detect, encode
-    face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel)
+    face_data = load_face_data(photos_directory, force_cache_recompute, verbose, use_cnn, parallel, downscale)
 
     # Phase 4: Clustering
     print("\n" + "=" * 60)
@@ -187,11 +206,17 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--force-recompute", action="store_true")
     parser.add_argument("--use-cnn", action="store_true", help="Use CNN detector (slower but more accurate)")
+    parser.add_argument("--downscale", action="store_true", help="Downscale images for faster detection")
     parser.add_argument("--parallel", action="store_true", help="Use ProcessPoolExecutor for parallel detection and encoding")
 
     args = parser.parse_args()
+
+    if args.parallel and args.use_cnn:
+        print("\nProgram not yet configured to run CNN parallely due to logical & physical constraints.")
+        exit()
+
     try:
-        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn, args.parallel)
+        main(args.photos_directory, args.force_recompute, args.verbose, args.use_cnn, args.downscale, args.parallel)
     except KeyboardInterrupt as ke:
         print("\nProgram exited because of keyboard interrupt!")
     except Exception as e:
