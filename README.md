@@ -76,3 +76,9 @@ The project evolved through several distinct phases to reach its current state:
 - `cache/`: Persistent storage for facial embeddings.
 - `output/`: Destination for organized photos.
 - `dlib/`: Pre-compiled binaries for Windows installation.
+
+
+## Future Plans
+- Right now, every photo and face is re-clustered, and we ask user whether to organize them or not.
+  - The plan is, when we have new photos, we try to cluster them and match up with the already existing clusters.
+  - If a cluster is not matched, we ask user whether to create a new cluster or not.

@@ -151,6 +151,7 @@ class SQLiteCache:
         path_str = str(path.resolve())
         with self.conn:
             self.conn.execute("DELETE FROM photos WHERE path = ?", (path_str,))
+            self.conn.execute("DELETE FROM faces WHERE photo_path = ?", (path_str,))
 
     def reconstruct_face_data(self) -> Dict:
         """

@@ -4,7 +4,6 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import argparse
 import time
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -25,9 +24,9 @@ def get_directory_modified_time(directory_path: Path):
 
     max_mod_time = directory_path.stat().st_mtime
 
-    for dir in directory_path.iterdir():
-        if dir.is_dir():
-            max_mod_time = max(max_mod_time, get_directory_modified_time(dir))
+    for d in directory_path.iterdir():
+        if d.is_dir():
+            max_mod_time = max(max_mod_time, get_directory_modified_time(d))
 
     return max_mod_time
 
@@ -68,6 +67,10 @@ def load_face_data(
         updates = cache.get_incremental_updates(photos_path)
         photos_to_process = updates['new'] + updates['modified']
 
+        # Handle deleted files
+        for deleted_path in updates['deleted']:
+            cache.remove_photo_data(deleted_path)
+
         if not photos_to_process:
             print("No individual files changed. Using cached data.")
             # Update global mtime since we just verified everything is up-to-date
@@ -76,9 +79,6 @@ def load_face_data(
 
         print(f"Incremental update: {len(updates['new'])} new, {len(updates['modified'])} modified photos.")
 
-        # Handle deleted files
-        for deleted_path in updates['deleted']:
-            cache.remove_photo_data(deleted_path)
     else:
         print("Force recompute enabled. Processing from scratch...")
         # In force recompute, we treat everything as new
@@ -93,7 +93,7 @@ def load_face_data(
         print("\n[2/4] Detecting faces...")
         if use_cnn:
             print("Using CNN detector")
-        face_data_incremental = detect_faces_batch(photos, verbose=verbose, use_cnn=use_cnn, parallel=parallel, downscale=downscale, log_queue=log_queue)
+        face_data_incremental = detect_faces_batch(photos, use_cnn=use_cnn, parallel=parallel, downscale=downscale, log_queue=log_queue)
 
         print("\n[3/4] Generating encodings...")
         generate_face_encodings(face_data_incremental, verbose=verbose, parallel=parallel, log_queue=log_queue)

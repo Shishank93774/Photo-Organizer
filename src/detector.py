@@ -83,8 +83,7 @@ def _detect_faces_worker(args: Tuple[Path, bool]) -> Tuple[Path, Optional[List[D
     photo_path, use_cnn = args
     logger = logging.getLogger()
 
-    import os
-    logger.debug(f"Processing {photo_path.name} (PID:{os.getpid()})")
+    logger.debug(f"Processing {photo_path.name} ({round(photo_path.stat().st_size / 1048576, 1)} MB)")
     face_locations = detect_faces_in_image(photo_path, use_cnn=use_cnn)
 
     # Skip if detection failed (None) or no faces found (empty list)
@@ -113,7 +112,6 @@ def _detect_faces_worker(args: Tuple[Path, bool]) -> Tuple[Path, Optional[List[D
 
 def detect_faces_batch(
     photo_paths: List[Path],
-    verbose: bool = True,
     show_photos: bool = False,
     use_cnn: bool = False,
     parallel: bool = False,
@@ -125,7 +123,6 @@ def detect_faces_batch(
 
     Args:
         photo_paths: List of image file paths
-        verbose: Show progress messages
         show_photos: Show photos
         use_cnn: Use CNN model for face detection (slower but more accurate)
         parallel: If True, use multiprocessing for parallel detection
@@ -135,10 +132,10 @@ def detect_faces_batch(
 
     if parallel:
         # Parallel mode: use ProcessPoolExecutor
-        face_data = _detect_faces_parallel(photo_paths, use_cnn, verbose, log_queue=log_queue)
+        face_data = _detect_faces_parallel(photo_paths, use_cnn, log_queue=log_queue)
     else:
         # Sequential mode
-        face_data = _detect_faces_sequential(photo_paths, use_cnn, verbose, downscale=downscale)
+        face_data = _detect_faces_sequential(photo_paths, use_cnn, downscale=downscale)
 
     if show_photos:
         for photo_path, faces in face_data.items():
@@ -151,7 +148,6 @@ def detect_faces_batch(
 def _detect_faces_sequential(
     photo_paths: List[Path],
     use_cnn: bool,
-    verbose: bool,
     downscale: bool = False,
 ) -> Dict[Path, List[Dict[str, Any]]]:
     """Sequential face detection with tqdm progress bar."""
@@ -196,7 +192,6 @@ def _detect_faces_sequential(
 def _detect_faces_parallel(
     photo_paths: List[Path],
     use_cnn: bool,
-    verbose: bool,
     log_queue: Any = None,
 ) -> Dict[Path, List[Dict[str, Any]]]:
     """Parallel face detection using ProcessPoolExecutor."""
@@ -218,45 +213,21 @@ def _detect_faces_parallel(
 
     # Use tqdm to show progress
     desc = "Detecting faces"
-    if verbose:
-        # In verbose mode, show detailed progress
-        with tqdm(total=len(work_items), desc=desc, ascii=True, leave=True) as pbar:
-            with ProcessPoolExecutor(
+    with tqdm(total=len(work_items), desc=desc, ascii=True, leave=False) as pbar:
+        with ProcessPoolExecutor(
                 max_workers=num_workers,
                 initializer=initializer,
                 initargs=init_args
-            ) as executor:
-                futures = {executor.submit(_detect_faces_worker, item): item[0] for item in work_items}
+        ) as executor:
+            futures = {executor.submit(_detect_faces_worker, item): item[0] for item in work_items}
 
-                for future in as_completed(futures):
-                    photo_path, face_data_list = future.result()
+            for future in as_completed(futures):
+                photo_path, face_data_list = future.result()
 
-                    if face_data_list is None:
-                        # Log is already handled in worker, but we can update pbar
-                        pass
-                    elif len(face_data_list) == 0:
-                        pass
-                    else:
-                        face_data[str(photo_path.resolve())] = face_data_list
+                if face_data_list is not None and len(face_data_list) > 0:
+                    face_data[str(photo_path.resolve())] = face_data_list
 
-                    pbar.update(1)
-    else:
-        # Non-verbose: clean progress bar only
-        with tqdm(total=len(work_items), desc=desc, ascii=True, leave=False) as pbar:
-            with ProcessPoolExecutor(
-                max_workers=num_workers,
-                initializer=initializer,
-                initargs=init_args
-            ) as executor:
-                futures = {executor.submit(_detect_faces_worker, item): item[0] for item in work_items}
-
-                for future in as_completed(futures):
-                    photo_path, face_data_list = future.result()
-
-                    if face_data_list is not None and len(face_data_list) > 0:
-                        face_data[str(photo_path.resolve())] = face_data_list
-
-                    pbar.update(1)
+                pbar.update(1)
 
     return face_data
 

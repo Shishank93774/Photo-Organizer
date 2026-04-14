@@ -59,8 +59,7 @@ def _encode_face_worker(args: Tuple[str, Tuple[int, int, int, int], str]) -> Tup
     photo_path, bbox, face_id = args
     logger = logging.getLogger()
 
-    import os
-    logger.debug(f"Encoding face {face_id} in {Path(photo_path).name} (PID:{os.getpid()})")
+    logger.debug(f"Encoding face {face_id} in {Path(photo_path).name}")
     encoding = generate_face_encoding(Path(photo_path), bbox)
 
     if encoding is None:
